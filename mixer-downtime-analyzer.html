@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Downtime &amp; Energy Loss Analyzer — MIX Production Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg: #10151b;
+    --panel: #171e26;
+    --panel-2: #1d2530;
+    --line: #2a3542;
+    --line-soft: #212a35;
+    --text: #e7ecf2;
+    --text-dim: #8fa0b3;
+    --text-faint: #5c6b7c;
+    --amber: #e8a33d;
+    --amber-dim: #7a5a26;
+    --red: #e0564f;
+    --red-dim: #6b2d2a;
+    --cyan: #49b6c4;
+    --cyan-dim: #1f4b52;
+    --green: #5cb87a;
+    --radius: 3px;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'IBM Plex Sans Thai', 'IBM Plex Sans', system-ui, sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before{
+    content:'';
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 48px 48px;
+    opacity:.35;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 30%, transparent 75%);
+  }
+  a{ color: var(--cyan); }
+  code, .mono{ font-family: var(--mono); }
+
+  .wrap{ max-width: 1180px; margin: 0 auto; padding: 0 24px 96px; position:relative; z-index:1; }
+
+  /* ---------- header ---------- */
+  header.hero{
+    padding: 56px 0 40px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 40px;
+  }
+  .eyebrow{
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--amber);
+    display:flex; align-items:center; gap:8px;
+    margin-bottom: 18px;
+  }
+  .eyebrow .dot{ width:6px; height:6px; border-radius:50%; background: var(--amber); box-shadow: 0 0 0 3px var(--amber-dim); }
+  h1{
+    font-size: 34px;
+    line-height: 1.25;
+    font-weight: 600;
+    margin: 0 0 14px;
+    letter-spacing: -.01em;
+    max-width: 780px;
+  }
+  h1 .accent{ color: var(--amber); }
+  .lede{
+    color: var(--text-dim);
+    max-width: 640px;
+    font-size: 15px;
+    margin: 0 0 28px;
+  }
+  .hero-meta{
+    display:flex; gap:28px; flex-wrap:wrap;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+  .hero-meta b{ color: var(--text-dim); font-weight:500; }
+
+  /* ---------- sections ---------- */
+  section{ margin-bottom: 48px; }
+  .section-head{
+    display:flex; align-items:baseline; justify-content:space-between;
+    gap:16px; margin-bottom:16px; flex-wrap:wrap;
+  }
+  .section-head h2{
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    font-weight:600;
+    color: var(--text);
+    margin:0;
+    display:flex; align-items:center; gap:10px;
+  }
+  .section-head h2::before{
+    content:'';
+    width: 3px; height: 14px;
+    background: var(--amber);
+    display:inline-block;
+  }
+  .section-head .hint{ font-size:12px; color:var(--text-faint); }
+
+  /* ---------- upload zone ---------- */
+  .upload-grid{
+    display:grid; grid-template-columns: 1fr 1fr; gap:16px;
+  }
+  @media (max-width: 760px){ .upload-grid{ grid-template-columns: 1fr; } }
+  .dropzone{
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+    padding: 28px 24px;
+    cursor:pointer;
+    transition: border-color .15s ease, background .15s ease;
+    position:relative;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color: var(--amber);
+    background: var(--panel-2);
+  }
+  .dropzone input{ display:none; }
+  .dz-tag{
+    font-family: var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color: var(--text-faint); margin-bottom:10px;
+  }
+  .dz-title{ font-size:15px; font-weight:500; margin-bottom:4px; }
+  .dz-sub{ font-size:12.5px; color:var(--text-dim); }
+  .dz-file{
+    margin-top:14px; padding-top:14px; border-top:1px solid var(--line);
+    font-family: var(--mono); font-size:12px; color: var(--green);
+    display:none;
+  }
+  .dz-file.show{ display:block; }
+  .dz-file .fname{ color: var(--text); }
+
+  /* ---------- config panel ---------- */
+  details.config{
+    border:1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+  }
+  details.config summary{
+    cursor:pointer; padding: 14px 18px; font-size:13px; color: var(--text-dim);
+    display:flex; align-items:center; justify-content:space-between; list-style:none;
+  }
+  details.config summary::-webkit-details-marker{ display:none; }
+  details.config summary::after{ content:'+'; font-family:var(--mono); color:var(--text-faint); }
+  details.config[open] summary::after{ content:'–'; }
+  .config-body{
+    padding: 4px 18px 18px; display:grid; grid-template-columns: repeat(5,1fr); gap:14px;
+    border-top:1px solid var(--line);
+  }
+  @media (max-width: 900px){ .config-body{ grid-template-columns: repeat(2,1fr); } }
+  .field label{ display:block; font-size:11px; color:var(--text-faint); margin-bottom:6px; font-family:var(--mono); }
+  .field input, .field select{
+    width:100%; background: var(--bg); border:1px solid var(--line); color:var(--text);
+    padding:8px 10px; border-radius: var(--radius); font-family: var(--mono); font-size:13px;
+  }
+  .field input:focus, .field select:focus{ outline:none; border-color:var(--amber); }
+
+  /* ---------- empty state ---------- */
+  .empty{
+    border:1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+    padding: 40px 32px; text-align:center; color: var(--text-faint); font-size:13px;
+  }
+  .empty b{ color:var(--text-dim); }
+
+  /* ---------- heatstrip (signature element) ---------- */
+  .heat-block{ margin-bottom: 28px; }
+  .heat-machine-label{
+    font-family: var(--mono); font-size:12px; color: var(--text-dim); margin-bottom:8px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .heat-machine-label .pill{
+    font-size:10px; padding:2px 7px; border-radius:20px; border:1px solid var(--line); color:var(--text-faint);
+  }
+  .heat-grid{ display:flex; flex-wrap:wrap; gap:3px; }
+  .heat-cell{
+    width:15px; height:15px; border-radius:2px; background: var(--line-soft);
+    border: 1px solid var(--line);
+    cursor:default;
+  }
+  .heat-cell[data-level="1"]{ background: #3d3320; border-color:#4a3d26; }
+  .heat-cell[data-level="2"]{ background: #6b4c1f; border-color:#7d5a25; }
+  .heat-cell[data-level="3"]{ background: #a5691f; border-color:#bd7a24; }
+  .heat-cell[data-level="4"]{ background: var(--red); border-color:#f16b63; }
+  .heat-legend{ display:flex; align-items:center; gap:6px; margin-top:10px; font-size:11px; color:var(--text-faint); font-family:var(--mono); }
+  .heat-legend .heat-cell{ width:11px; height:11px; }
+
+  /* ---------- cards ---------- */
+  .cards{ display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:12px; }
+  .card{
+    border:1px solid var(--line); background: var(--panel); border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .card .k{ font-family: var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-faint); margin-bottom:8px; }
+  .card .v{ font-family: var(--mono); font-size:24px; font-weight:600; color:var(--text); }
+  .card .v small{ font-size:13px; color:var(--text-dim); font-weight:400; }
+  .card.accent-amber .v{ color: var(--amber); }
+  .card.accent-red .v{ color: var(--red); }
+  .card.accent-cyan .v{ color: var(--cyan); }
+
+  /* ---------- tables ---------- */
+  .table-wrap{ border:1px solid var(--line); border-radius: var(--radius); overflow:hidden; background:var(--panel); }
+  table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead th{
+    text-align:left; padding:10px 12px; background: var(--panel-2); color: var(--text-faint);
+    font-family: var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+    border-bottom:1px solid var(--line); white-space:nowrap; cursor:pointer; user-select:none;
+  }
+  thead th:hover{ color: var(--text-dim); }
+  thead th.sorted::after{ content:' ↓'; color:var(--amber); }
+  tbody td{ padding:9px 12px; border-bottom:1px solid var(--line-soft); vertical-align:top; color: var(--text-dim); }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background: var(--panel-2); }
+  td.num, th.num{ text-align:right; font-family:var(--mono); color:var(--text); }
+  td.mono{ font-family:var(--mono); color:var(--text); }
+  .badge{
+    display:inline-block; padding:2px 8px; border-radius:20px; font-size:10.5px;
+    border:1px solid var(--line); color:var(--text-dim); font-family:var(--mono); white-space:nowrap;
+  }
+  .badge.mch{ color:var(--amber); border-color:var(--amber-dim); }
+  .table-toolbar{ display:flex; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line); background:var(--panel-2); flex-wrap:wrap; }
+  .table-toolbar select, .table-toolbar input{
+    background: var(--bg); border:1px solid var(--line); color:var(--text); padding:6px 10px;
+    border-radius: var(--radius); font-family:var(--mono); font-size:12px;
+  }
+  .table-scroll{ max-height: 420px; overflow:auto; }
+
+  /* ---------- chart panel ---------- */
+  .chart-panel{ border:1px solid var(--line); background:var(--panel); border-radius:var(--radius); padding:18px; }
+
+  /* ---------- buttons ---------- */
+  .btn{
+    background: transparent; border:1px solid var(--line); color: var(--text-dim);
+    padding: 9px 16px; border-radius: var(--radius); font-family: var(--sans); font-size:13px;
+    cursor:pointer; transition: all .15s ease;
+  }
+  .btn:hover{ border-color: var(--amber); color: var(--text); }
+  .btn.primary{ border-color: var(--amber); color: var(--amber); }
+  .btn.primary:hover{ background: var(--amber); color: #10151b; }
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+
+  footer{
+    border-top:1px solid var(--line); padding-top:24px; margin-top:64px;
+    color: var(--text-faint); font-size:12px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;
+  }
+  footer a{ color:var(--text-faint); }
+  footer a:hover{ color:var(--amber); }
+
+  .note-box{
+    font-size:12px; color:var(--text-faint); border-left:2px solid var(--line); padding: 4px 0 4px 12px; margin-top:14px;
+  }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background: var(--line); border-radius:4px; }
+  ::-webkit-scrollbar-track{ background: transparent; }
+
+  .hidden{ display:none !important; }
+
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; animation:none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow"><span class="dot"></span>MIXER PRODUCTION LOG · CLIENT-SIDE ANALYSIS</div>
+    <h1>วิเคราะห์สาเหตุการหยุดเครื่องและ<span class="accent">พลังงานที่สูญเสีย</span> จากบันทึกการผลิตของคุณเอง</h1>
+    <p class="lede">
+      นำเข้าไฟล์บันทึกการผลิตรายวัน (.xlsx) และไฟล์มิเตอร์ไฟฟ้า (.csv) ในรูปแบบเดียวกับที่โรงงานใช้อยู่ —
+      เครื่องมือนี้ประมวลผลทั้งหมดในเบราว์เซอร์ของคุณ ไม่มีข้อมูลถูกส่งออกไปที่เซิร์ฟเวอร์ใดๆ จึงใช้งานได้ปลอดภัยบน GitHub Pages
+      หรือเปิดจากเครื่องโดยตรง
+    </p>
+    <div class="hero-meta">
+      <span><b>Input</b> .xlsx (DATE / NAME / BATCH / Total Quantity / หมายเหตุ)</span>
+      <span><b>Input</b> .csv หรือ .xlsx (Timestamp / P-Total / Month-kWH)</span>
+      <span><b>Runtime</b> 100% client-side · no backend</span>
+    </div>
+  </header>
+
+  <!-- ================= UPLOAD ================= -->
+  <section id="section-upload">
+    <div class="section-head">
+      <h2>01 — นำเข้าข้อมูล</h2>
+      <span class="hint">ลากไฟล์มาวาง หรือคลิกเพื่อเลือกไฟล์</span>
+    </div>
+    <div class="upload-grid">
+      <div class="dropzone" id="dz-production" tabindex="0">
+        <div class="dz-tag">Required · .xlsx</div>
+        <div class="dz-title">บันทึกการผลิตรายวัน</div>
+        <div class="dz-sub">1 ไฟล์ workbook, แต่ละชีท = 1 เครื่องผสม (เช่น MIX1, MIX3) คอลัมน์: DATE, NAME, BATCH, Total Quantity, หมายเหตุ</div>
+        <div class="dz-file" id="dz-production-file">✓ <span class="fname"></span></div>
+        <input type="file" id="input-production" accept=".xlsx,.xls">
+      </div>
+      <div class="dropzone" id="dz-meter" tabindex="0">
+        <div class="dz-tag">Optional · .csv หรือ .xlsx</div>
+        <div class="dz-title">มิเตอร์ไฟฟ้า (เช่น Cooling Fan)</div>
+        <div class="dz-sub">คอลัมน์: Timestamp, P-Total (kW), Month-kWH, Total-kWH — รายนาทีหรือใกล้เคียง</div>
+        <div class="dz-file" id="dz-meter-file">✓ <span class="fname"></span></div>
+        <input type="file" id="input-meter" accept=".csv,.xlsx,.xls">
+      </div>
+    </div>
+
+    <div style="height:14px"></div>
+
+    <details class="config">
+      <summary>ตั้งค่าอัตราค่าไฟ (TOU) และเกณฑ์การจับเหตุการณ์</summary>
+      <div class="config-body">
+        <div class="field"><label>On-Peak เริ่ม (ชม.)</label><input type="number" id="cfg-onstart" value="9" min="0" max="23"></div>
+        <div class="field"><label>On-Peak สิ้นสุด (ชม.)</label><input type="number" id="cfg-onend" value="22" min="1" max="24"></div>
+        <div class="field"><label>อัตรา On-Peak (บ./หน่วย)</label><input type="number" id="cfg-onrate" value="4.1025" step="0.0001"></div>
+        <div class="field"><label>อัตรา Off-Peak (บ./หน่วย)</label><input type="number" id="cfg-offrate" value="2.5849" step="0.0001"></div>
+        <div class="field"><label>Ft (บ./หน่วย)</label><input type="number" id="cfg-ft" value="0.1623" step="0.0001"></div>
+        <div class="field"><label>VAT (%)</label><input type="number" id="cfg-vat" value="7" step="0.1"></div>
+        <div class="field"><label>เกณฑ์ Fan "ปิด" (kW ต่ำกว่า)</label><input type="number" id="cfg-fanoff" value="0.5" step="0.1"></div>
+        <div class="field"><label>เครื่องที่จะจับคู่กับไฟล์มิเตอร์</label><select id="cfg-meter-machine"><option value="">— นำเข้าบันทึกการผลิตก่อน —</option></select></div>
+      </div>
+    </details>
+  </section>
+
+  <!-- ================= EMPTY STATE ================= -->
+  <div id="empty-state" class="empty">
+    ยังไม่มีข้อมูล — นำเข้าไฟล์บันทึกการผลิต (.xlsx) ด้านบนเพื่อเริ่มวิเคราะห์<br>
+    <b>ผลลัพธ์ที่จะได้:</b> เวลาหยุดเครื่องแยกตามสาเหตุ · ความถี่การปรับพารามิเตอร์ · สัดส่วน batch ตามสูตร ·
+    และหากมีไฟล์มิเตอร์ ค่าพลังงาน/ค่าไฟที่สูญเสียระหว่างเครื่องหยุดเทียบกับสถานะพัดลม
+  </div>
+
+  <!-- ================= RESULTS (hidden until data loaded) ================= -->
+  <div id="results" class="hidden">
+
+    <section id="section-heat">
+      <div class="section-head">
+        <h2>02 — ปฏิทินเวลาหยุดเครื่องรายวัน</h2>
+        <span class="hint">ช่องสีเข้ม = วันที่หยุดเครื่องนานกว่า (ชี้เมาส์เพื่อดูรายละเอียด)</span>
+      </div>
+      <div id="heat-container"></div>
+      <div class="heat-legend">
+        น้อย <span class="heat-cell" data-level="0"></span><span class="heat-cell" data-level="1"></span><span class="heat-cell" data-level="2"></span><span class="heat-cell" data-level="3"></span><span class="heat-cell" data-level="4"></span> มาก
+      </div>
+    </section>
+
+    <section id="section-overview">
+      <div class="section-head"><h2>03 — ภาพรวมตามเครื่อง</h2></div>
+      <div id="overview-cards" class="cards"></div>
+    </section>
+
+    <section id="section-downtime">
+      <div class="section-head">
+        <h2>04 — ระยะเวลาที่ไม่มีการผลิต (Downtime)</h2>
+        <span class="hint">อนุมานวันที่จากบริบทแถวก่อนหน้าในไฟล์ต้นฉบับ — ควรตรวจทานอีกครั้ง</span>
+      </div>
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <select id="dt-filter-machine"><option value="">ทุกเครื่อง</option></select>
+          <select id="dt-filter-category"><option value="">ทุกหมวดหมู่</option></select>
+          <input type="text" id="dt-search" placeholder="ค้นหาข้อความ…">
+        </div>
+        <div class="table-scroll">
+          <table id="table-downtime">
+            <thead><tr>
+              <th data-key="machine">เครื่อง</th>
+              <th data-key="date">วันที่</th>
+              <th data-key="time">เวลา</th>
+              <th data-key="minutes" class="num">นาที</th>
+              <th data-key="category">หมวดหมู่</th>
+              <th data-key="text">เหตุการณ์</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="section-params">
+      <div class="section-head"><h2>05 — การปรับรอบ / พารามิเตอร์</h2></div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table id="table-params">
+            <thead><tr>
+              <th data-key="machine">เครื่อง</th>
+              <th data-key="date">วันที่</th>
+              <th data-key="text">รายละเอียดการปรับ</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="section-issues">
+      <div class="section-head"><h2>06 — ปัญหาอื่นระหว่างการผลิต</h2><span class="hint">ไม่มีเวลาสิ้นสุดชัดเจน / ปัญหาคุณภาพ-วัตถุดิบ</span></div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table id="table-issues">
+            <thead><tr>
+              <th data-key="machine">เครื่อง</th>
+              <th data-key="date">วันที่</th>
+              <th data-key="text">รายละเอียด</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="section-formula">
+      <div class="section-head"><h2>07 — จำนวน batch ตามสูตร (Top 8 ต่อเครื่อง)</h2></div>
+      <div class="chart-panel"><canvas id="chart-formula" height="90"></canvas></div>
+    </section>
+
+    <section id="section-fan" class="hidden">
+      <div class="section-head">
+        <h2>08 — เหตุการณ์หยุดเครื่อง vs สถานะ Fan</h2>
+        <span class="hint" id="fan-machine-hint"></span>
+      </div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table id="table-fan">
+            <thead><tr>
+              <th>วันที่</th><th>เวลา</th><th class="num">นาที</th><th>สาเหตุ</th>
+              <th class="num">P ต่ำสุด</th><th class="num">P สูงสุด</th><th class="num">P เฉลี่ย</th>
+              <th class="num">kWh สูญเสีย</th><th class="num">ค่าไฟ (บ.)</th><th>สถานะ Fan</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div style="height:16px"></div>
+      <div id="fan-summary-cards" class="cards"></div>
+    </section>
+
+    <section id="section-export">
+      <div class="section-head"><h2>09 — ส่งออกผลวิเคราะห์</h2></div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn primary" id="btn-export-json">ดาวน์โหลด JSON</button>
+        <button class="btn" id="btn-export-csv-downtime">ดาวน์โหลด CSV — Downtime</button>
+        <button class="btn" id="btn-export-csv-fan" disabled>ดาวน์โหลด CSV — Fan Cross-reference</button>
+      </div>
+      <div class="note-box">ไฟล์นี้เป็น static HTML ไฟล์เดียว แก้ไขกฎการจัดหมวดหมู่ได้โดยตรงในฟังก์ชัน <code>categorize()</code> ของโค้ด แล้วอัปโหลดกลับขึ้น GitHub Pages ได้ทันที</div>
+    </section>
+
+  </div>
+
+  <footer>
+    <span>Mixer Downtime &amp; Energy Loss Analyzer · ไฟล์ HTML เดี่ยว รันได้บน GitHub Pages โดยไม่ต้อง build</span>
+    <span>ประมวลผลในเบราว์เซอร์เท่านั้น — ไม่มีการอัปโหลดข้อมูลไปที่ใด</span>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  const state = {
+    machines: [],       // [{machine, batches:[{date,name,batch,qty,note}], notes:[{inferredDate,text}]}]
+    downtime: [],        // parsed downtime events
+    params: [],
+    issues: [],
+    meter: null,         // {rows:[{ts,pTotal,monthKwh,totalKwh}], fileName}
+    meterMachine: '',
+    cfg: {}
+  };
+
+  const $ = (sel) => document.querySelector(sel);
+  const $all = (sel) => Array.from(document.querySelectorAll(sel));
+
+  // ============================================================
+  // CONFIG
+  // ============================================================
+  function readConfig(){
+    state.cfg = {
+      onStart: parseInt($('#cfg-onstart').value,10),
+      onEnd: parseInt($('#cfg-onend').value,10),
+      onRate: parseFloat($('#cfg-onrate').value),
+      offRate: parseFloat($('#cfg-offrate').value),
+      ft: parseFloat($('#cfg-ft').value),
+      vat: parseFloat($('#cfg-vat').value),
+      fanOff: parseFloat($('#cfg-fanoff').value),
+    };
+  }
+  $all('.config-body input').forEach(el => el.addEventListener('change', () => { readConfig(); recomputeFan(); }));
+  readConfig();
+
+  // ============================================================
+  // THAI MONTH / DATE HELPERS
+  // ============================================================
+  const THAI_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  function fmtDate(d){
+    if(!(d instanceof Date) || isNaN(d)) return '-';
+    return `${String(d.getDate()).padStart(2,'0')} ${THAI_MONTHS[d.getMonth()]}`;
+  }
+  function fmtDateFull(d){
+    if(!(d instanceof Date) || isNaN(d)) return '-';
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  }
+  function dateKey(d){ return d.getFullYear()+'-'+d.getMonth()+'-'+d.getDate(); }
+
+  // Two separate issues get fixed here:
+  // 1) SheetJS's cellDates:true date conversion turns out to be timezone-
+  //    sensitive in a way that isn't fully cleaned up even with its "UTC"
+  //    option (a known rough edge in the library) — the same source cell can
+  //    resolve to a different absolute instant, and therefore a different
+  //    calendar day, depending on the browser's local timezone. Rather than
+  //    depend on SheetJS's Date object at all, we parse the workbook WITHOUT
+  //    cellDates and read the raw numeric Excel serial instead, then convert
+  //    it ourselves with a fixed UTC-based formula. That serial number is
+  //    just a plain number (identical everywhere, no timezone involved), so
+  //    this is fully deterministic regardless of the viewer's timezone.
+  // 2) Thai production logs are very often authored on a Buddhist-Era system
+  //    (ค.ศ. + 543), and — importantly — this is NOT just a display format: the
+  //    underlying date serial in the .xlsx cell itself resolves to a year like
+  //    2569 rather than 2026. The meter CSV, by contrast, uses Gregorian years.
+  //    Left uncorrected, downtime-event dates and meter timestamps sit 543 years
+  //    apart and NEVER overlap, so every cross-reference lookup silently returns
+  //    "no meter data in this period". We detect year > 2400 and subtract 543.
+  function excelSerialToDate(n){
+    const utcMs = Math.round((n - 25569) * 86400 * 1000);
+    const utcDate = new Date(utcMs);
+    let y = utcDate.getUTCFullYear(), m = utcDate.getUTCMonth(), day = utcDate.getUTCDate();
+    if (y > 2400) y -= 543;
+    return new Date(y, m, day);
+  }
+  function coerceDate(v){
+    if (typeof v === 'number') return excelSerialToDate(v);
+    if (v instanceof Date && !isNaN(v)){
+      // Defensive fallback only — the parser below avoids cellDates so this
+      // branch should rarely fire, but if it does, round-trip through the
+      // same UTC-serial math for consistency rather than trusting local/UTC
+      // getters on a SheetJS-built Date object.
+      const serial = v.getTime() / 86400000 + 25569;
+      return excelSerialToDate(serial);
+    }
+    if (typeof v === 'string'){
+      const s = v.trim();
+      let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+      m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      if (m) {
+        let yr = +m[3];
+        if (yr > 2400) yr -= 543; // Buddhist era safeguard
+        return new Date(yr, +m[2]-1, +m[1]);
+      }
+      const d = new Date(s);
+      if (!isNaN(d)) return d;
+    }
+    return null;
+  }
+
+  // ============================================================
+  // CATEGORIZATION RULES — edit here to tune matching
+  // ============================================================
+  const TIME_RANGE_RE = /(\d{1,2})[.:](\d{2})\s*-\s*(\d{1,2})[.:](\d{2})/;
+  const TIME_OPEN_RE = /ตั้งแต่เวลา\s*(\d{1,2})[.:](\d{2})/;
+  const BREAK_RE = /พักพร้อมกัน|พักเที่ยง|พักกะ/;
+  const PARAM_RE = /rpm|Rampressure|VR\s?\d|kg\s*\/\s*B|step\s*\d.*sec|เข้าโปรแกรมใหม่|ถัง\s*filler|เปลี่ยนถัง/i;
+  const QUALITY_RE = /REMIX|Mooney|SG\s|ผิดมาตรฐาน|จับตัวเป็นก้อน/i;
+
+  const CATEGORY_RULES = [
+    [/Cork\s*tape|ย้ายไปผลิต/i, 'เปลี่ยนงาน/วางแผนผลิต'],
+    [/MCL|ใบมีด|โซ่ไลน์/i, 'ชุดตัดยางท้ายไลน์ (MCL)'],
+    [/TCU|Temp.*(เสีย|ไม่.*เปิด)/i, 'ระบบควบคุมอุณหภูมิ'],
+    [/น้ำมัน|ไฮดรอลิก|Feed/i, 'ระบบไฮดรอลิก/น้ำมัน'],
+    [/ท่อน้ำ|อ่างน้ำ|Cooling|หล่อเย็น|Mesh/i, 'ระบบน้ำ/หล่อเย็น'],
+    [/มอเตอร์|Main\s*Drive|สั่น/i, 'เครื่องจักร/มอเตอร์'],
+    [/คอนเวเยอร์|น้ำหนัก|ชั่ง/i, 'เครื่องชั่ง/เซนเซอร์'],
+    [/Drop\s*door|ยางติด|กระบอกสูบ/i, 'เครื่องจักร/กลไก'],
+  ];
+  function matchCategory(text){
+    for (const [re, cat] of CATEGORY_RULES){ if (re.test(text)) return cat; }
+    return 'อื่นๆ';
+  }
+
+  function classifyNote(text){
+    if (BREAK_RE.test(text)) return { kind:'break' };
+    const timeMatch = text.match(TIME_RANGE_RE);
+    const isParam = PARAM_RE.test(text) && !timeMatch; // param changes rarely carry a stop-time window
+    if (isParam) return { kind:'param' };
+    if (timeMatch){
+      let sh=+timeMatch[1], sm=+timeMatch[2], eh=+timeMatch[3], em=+timeMatch[4];
+      let startMin = sh*60+sm, endMin = eh*60+em;
+      if (endMin < startMin) endMin += 24*60;
+      return { kind:'downtime', startH:sh, startM:sm, endH:eh, endM:em, minutes: endMin-startMin, category: matchCategory(text) };
+    }
+    const openMatch = text.match(TIME_OPEN_RE);
+    if (openMatch) return { kind:'issue', openStart: `${openMatch[1]}:${openMatch[2]}`, category: matchCategory(text) };
+    if (QUALITY_RE.test(text)) return { kind:'issue', category:'คุณภาพ/วัตถุดิบ' };
+    return { kind:'issue', category: matchCategory(text) };
+  }
+
+  // ============================================================
+  // PRODUCTION WORKBOOK PARSER
+  // ============================================================
+  async function parseProductionWorkbook(file){
+    const buf = await file.arrayBuffer();
+    // cellDates intentionally omitted — dates are read as raw numeric serials
+    // and converted ourselves in coerceDate() for timezone-independent results.
+    const wb = XLSX.read(buf, { type:'array' });
+    const machines = [];
+
+    wb.SheetNames.forEach(sheetName => {
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:null });
+      let headerIdx = -1;
+      for (let i=0;i<rows.length;i++){
+        if (rows[i] && rows[i].some(c => c && /^(date|วันที่)$/i.test(String(c).trim()))) { headerIdx = i; break; }
+      }
+      if (headerIdx === -1) return;
+      const header = rows[headerIdx].map(h => h ? String(h).trim().toLowerCase() : '');
+      const dateCol  = header.findIndex(h => /^(date|วันที่)$/.test(h));
+      const nameCol  = header.findIndex(h => /^(name|สูตร)$/.test(h));
+      const batchCol = header.findIndex(h => /^batch/.test(h));
+      const qtyCol   = header.findIndex(h => /(quantity|จำนวน)/.test(h));
+      const known = [dateCol,nameCol,batchCol,qtyCol].filter(i=>i>=0);
+      const noteCol = known.length ? Math.max(...known)+1 : 4;
+
+      let lastDate = null;
+      const batches = [], notes = [];
+      for (let i=headerIdx+1;i<rows.length;i++){
+        const row = rows[i];
+        if (!row) continue;
+        const dateRaw = dateCol>=0 ? row[dateCol] : null;
+        const nameRaw = nameCol>=0 ? row[nameCol] : null;
+        const qtyRaw  = qtyCol>=0 ? row[qtyCol] : null;
+        const batchRaw= batchCol>=0 ? row[batchCol] : null;
+        const noteRaw = row[noteCol];
+        const d = dateRaw ? coerceDate(dateRaw) : null;
+        if (d){
+          lastDate = d;
+          if (nameRaw && String(nameRaw).trim()){
+            batches.push({
+              date: d, name: String(nameRaw).trim(), batch: batchRaw,
+              qty: parseFloat(qtyRaw) || 0,
+              note: noteRaw ? String(noteRaw).trim() : ''
+            });
+          }
+        } else if (nameRaw && String(nameRaw).trim().length > 2){
+          notes.push({ inferredDate: lastDate, text: String(nameRaw).trim() });
+        }
+      }
+      if (batches.length || notes.length) machines.push({ machine: sheetName, batches, notes });
+    });
+    return machines;
+  }
+
+  function buildEventsFromMachines(machines){
+    const downtime = [], params = [], issues = [];
+    machines.forEach(m => {
+      m.notes.forEach(n => {
+        const cls = classifyNote(n.text);
+        const base = { machine: m.machine, date: n.inferredDate, text: n.text };
+        if (cls.kind === 'break') return;
+        if (cls.kind === 'downtime'){
+          downtime.push({
+            ...base,
+            time: `${String(cls.startH).padStart(2,'0')}:${String(cls.startM).padStart(2,'0')}–${String(cls.endH).padStart(2,'0')}:${String(cls.endM).padStart(2,'0')}`,
+            startH: cls.startH, startM: cls.startM, endH: cls.endH, endM: cls.endM,
+            minutes: cls.minutes, category: cls.category
+          });
+        } else if (cls.kind === 'param'){
+          params.push(base);
+        } else {
+          issues.push({ ...base, category: cls.category || 'อื่นๆ', openStart: cls.openStart || '' });
+        }
+      });
+    });
+    return { downtime, params, issues };
+  }
+
+  // ============================================================
+  // METER CSV PARSER
+  // ============================================================
+  // Full datetime version of the Excel-serial conversion used for production
+  // dates: same rationale (SheetJS's own Date objects are not reliably
+  // timezone-independent), but here we must preserve the time-of-day too, not
+  // just the calendar date. Pure arithmetic on the raw serial number, then
+  // rebuilt as a naive local Date — deterministic regardless of the browser's
+  // timezone, and consistent with how CSV timestamp strings are parsed below
+  // (also treated as naive local wall-clock time, since that's what a plant
+  // meter actually records).
+  function excelSerialToDateTime(serial){
+    let totalDays = Math.floor(serial);
+    let fracDay = serial - totalDays;
+    let totalSeconds = Math.round(fracDay * 86400);
+    if (totalSeconds >= 86400){ totalSeconds -= 86400; totalDays += 1; }
+    const utcMs = Math.round((totalDays - 25569) * 86400 * 1000) + totalSeconds * 1000;
+    const utcDate = new Date(utcMs);
+    let y = utcDate.getUTCFullYear(), mo = utcDate.getUTCMonth(), d = utcDate.getUTCDate();
+    const hh = utcDate.getUTCHours(), mm = utcDate.getUTCMinutes(), ss = utcDate.getUTCSeconds();
+    if (y > 2400) y -= 543; // Buddhist-Era safeguard, same as production dates
+    return new Date(y, mo, d, hh, mm, ss);
+  }
+
+  function parseMeterFile(file){
+    const isExcel = /\.xlsx?$/i.test(file.name);
+    return isExcel ? parseMeterXLSX(file) : parseMeterCSVFile(file);
+  }
+
+  function parseMeterXLSX(file){
+    return new Promise(async (resolve, reject) => {
+      try{
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' }); // no cellDates — see note above
+        const sheetName = wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        const rows2d = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+        if (!rows2d.length) { resolve({ rows: [], fileName: file.name }); return; }
+        const header = rows2d[0].map(h => h ? String(h).trim() : '');
+        const tsCol = header.findIndex(h => /timestamp|date.?time/i.test(h));
+        const pCol = header.findIndex(h => /^p.?total$/i.test(h) || /p.?total/i.test(h));
+        const monthCol = header.findIndex(h => /month.*kwh/i.test(h));
+        const totalCol = header.findIndex(h => /^total.?kwh$/i.test(h));
+        const rows = [];
+        for (let i=1; i<rows2d.length; i++){
+          const row = rows2d[i]; if (!row) continue;
+          const rawTs = tsCol>=0 ? row[tsCol] : null;
+          const rawP = pCol>=0 ? row[pCol] : null;
+          let ts = null;
+          if (typeof rawTs === 'number') ts = excelSerialToDateTime(rawTs);
+          else if (rawTs) ts = coerceDateTime(rawTs);
+          const p = parseFloat(rawP);
+          if (ts && !isNaN(p)){
+            rows.push({
+              ts, pTotal: p,
+              monthKwh: monthCol>=0 ? parseFloat(row[monthCol]) : null,
+              totalKwh: totalCol>=0 ? parseFloat(row[totalCol]) : null,
+            });
+          }
+        }
+        rows.sort((a,b) => a.ts - b.ts);
+        resolve({ rows, fileName: file.name });
+      } catch(err){ reject(err); }
+    });
+  }
+
+  function parseMeterCSVFile(file){
+    return new Promise((resolve, reject) => {
+      Papa.parse(file, {
+        header: true, dynamicTyping: true, skipEmptyLines: true,
+        complete: (res) => {
+          const fields = res.meta.fields || [];
+          const tsCol = fields.find(f => /timestamp|date.?time/i.test(f)) || fields[0];
+          const pCol = fields.find(f => /^p.?total$/i.test(f.trim())) || fields.find(f => /p.?total/i.test(f));
+          const monthCol = fields.find(f => /month.*kwh/i.test(f));
+          const totalCol = fields.find(f => /^total.?kwh$/i.test(f.trim()));
+          const rows = res.data.map(r => {
+            const ts = coerceDateTime(r[tsCol]);
+            const p = parseFloat(r[pCol]);
+            return ts && !isNaN(p) ? { ts, pTotal: p, monthKwh: monthCol?parseFloat(r[monthCol]):null, totalKwh: totalCol?parseFloat(r[totalCol]):null } : null;
+          }).filter(Boolean);
+          rows.sort((a,b) => a.ts - b.ts);
+          resolve({ rows, fileName: file.name });
+        },
+        error: reject
+      });
+    });
+  }
+  function coerceDateTime(v){
+    if (v instanceof Date) return v;
+    if (typeof v === 'string'){
+      const d = new Date(v.replace(' ', 'T'));
+      if (!isNaN(d)) return d;
+    }
+    return null;
+  }
+
+  // ============================================================
+  // FAN CROSS-REFERENCE
+  // ============================================================
+  function isOnPeak(ts, cfg){
+    const day = ts.getDay(); // 0=Sun..6=Sat
+    const hr = ts.getHours();
+    return day >= 1 && day <= 5 && hr >= cfg.onStart && hr < cfg.onEnd;
+  }
+  function computeFanCrossRef(){
+    if (!state.meter || !state.meterMachine) return [];
+    const cfg = state.cfg;
+    const onRate = (cfg.onRate + cfg.ft) * (1 + cfg.vat/100);
+    const offRate = (cfg.offRate + cfg.ft) * (1 + cfg.vat/100);
+    const rows = state.meter.rows;
+    const events = state.downtime.filter(e => e.machine === state.meterMachine && e.date);
+
+    return events.map(e => {
+      const start = new Date(e.date); start.setHours(e.startH, e.startM, 0, 0);
+      const end = new Date(e.date); end.setHours(e.endH, e.endM, 0, 0);
+      if (end <= start) end.setDate(end.getDate()+1);
+      // binary-search-ish filter (linear is fine for typical sizes)
+      const sub = rows.filter(r => r.ts >= start && r.ts < end);
+      if (!sub.length) return { ...e, pmin:null, pmax:null, pavg:null, kwh:null, cost:null, fanStatus:'ไม่มีข้อมูลมิเตอร์ช่วงนี้' };
+      let pmin=Infinity, pmax=-Infinity, sum=0, kwh=0, onKwh=0, offKwh=0;
+      for (let i=0;i<sub.length;i++){
+        const r = sub[i];
+        pmin = Math.min(pmin, r.pTotal); pmax = Math.max(pmax, r.pTotal); sum += r.pTotal;
+        const nextTs = i+1 < sub.length ? sub[i+1].ts : end;
+        let dtHr = (nextTs - r.ts) / 3600000;
+        if (dtHr > 5/60) dtHr = 5/60;
+        const e_ = r.pTotal * dtHr;
+        kwh += e_;
+        if (isOnPeak(r.ts, cfg)) onKwh += e_; else offKwh += e_;
+      }
+      const cost = onKwh*onRate + offKwh*offRate;
+      const pavg = sum / sub.length;
+      const fanStatus = pmax < cfg.fanOff ? 'ปิด - ไม่มีการทำงาน' : 'ไม่ปิด - ยังทำงานตลอด';
+      return { ...e, pmin, pmax, pavg, kwh, cost, fanStatus };
+    });
+  }
+
+  // ============================================================
+  // RENDER: HEATSTRIP
+  // ============================================================
+  function renderHeatstrips(){
+    const container = $('#heat-container');
+    container.innerHTML = '';
+    const byMachine = {};
+    state.downtime.forEach(e => {
+      if (!e.date) return;
+      byMachine[e.machine] = byMachine[e.machine] || {};
+      const k = dateKey(e.date);
+      byMachine[e.machine][k] = byMachine[e.machine][k] || { total:0, date:e.date, items:[] };
+      byMachine[e.machine][k].total += e.minutes;
+      byMachine[e.machine][k].items.push(e.text.replace(/^-+/,'').trim());
+    });
+    Object.keys(byMachine).sort().forEach(machine => {
+      const block = document.createElement('div');
+      block.className = 'heat-block';
+      const label = document.createElement('div');
+      label.className = 'heat-machine-label';
+      const totalMin = Object.values(byMachine[machine]).reduce((s,d)=>s+d.total,0);
+      label.innerHTML = `${machine} <span class="pill">${(totalMin/60).toFixed(1)} ชม. รวม</span>`;
+      block.appendChild(label);
+      const grid = document.createElement('div');
+      grid.className = 'heat-grid';
+      const days = Object.values(byMachine[machine]).sort((a,b)=>a.date-b.date);
+      days.forEach(d => {
+        const cell = document.createElement('div');
+        cell.className = 'heat-cell';
+        let level = 0;
+        if (d.total > 0) level = 1;
+        if (d.total >= 60) level = 2;
+        if (d.total >= 180) level = 3;
+        if (d.total >= 360) level = 4;
+        cell.dataset.level = level;
+        cell.title = `${fmtDateFull(d.date)} — ${d.total} นาที\n${d.items.slice(0,4).join('\n')}`;
+        grid.appendChild(cell);
+      });
+      block.appendChild(grid);
+      container.appendChild(block);
+    });
+  }
+
+  // ============================================================
+  // RENDER: OVERVIEW CARDS
+  // ============================================================
+  function renderOverview(){
+    const container = $('#overview-cards');
+    container.innerHTML = '';
+    state.machines.forEach(m => {
+      const batchTotal = m.batches.reduce((s,b)=>s+b.qty,0);
+      const formulaCount = new Set(m.batches.map(b=>b.name)).size;
+      const changeovers = m.batches.filter(b => /ล้างเครื่อง/.test(b.note||'')).length;
+      const dtMinutes = state.downtime.filter(e=>e.machine===m.machine).reduce((s,e)=>s+e.minutes,0);
+      const paramCount = state.params.filter(p=>p.machine===m.machine).length;
+
+      const items = [
+        ['เครื่อง', m.machine, ''],
+        ['จำนวน batch', batchTotal.toLocaleString(), ''],
+        ['จำนวนสูตร', formulaCount, ''],
+        ['เปลี่ยนสูตร (ล้างเครื่อง)', changeovers, ''],
+        ['เวลาหยุดเครื่อง', (dtMinutes/60).toFixed(1)+' ชม.', 'accent-red'],
+        ['ปรับพารามิเตอร์', paramCount+' ครั้ง', 'accent-amber'],
+      ];
+      items.forEach(([k,v,accent]) => {
+        const c = document.createElement('div');
+        c.className = 'card ' + (accent||'');
+        c.innerHTML = `<div class="k">${k}</div><div class="v">${v}</div>`;
+        container.appendChild(c);
+      });
+    });
+  }
+
+  // ============================================================
+  // RENDER: TABLES
+  // ============================================================
+  function renderTable(tbodySel, rows, cols){
+    const tbody = document.querySelector(tbodySel);
+    tbody.innerHTML = rows.map(r => '<tr>' + cols.map(c => {
+      const val = c.fmt ? c.fmt(r) : (r[c.key] ?? '-');
+      return `<td class="${c.cls||''}">${val}</td>`;
+    }).join('') + '</tr>').join('') || '<tr><td colspan="10" style="text-align:center;color:var(--text-faint);padding:24px;">ไม่มีข้อมูล</td></tr>';
+  }
+
+  function machineBadge(m){ return `<span class="badge mch">${m}</span>`; }
+  function catBadge(c){ return `<span class="badge">${c}</span>`; }
+
+  let downtimeSort = { key:'date', dir:1 };
+  function renderDowntimeTable(){
+    const machineFilter = $('#dt-filter-machine').value;
+    const catFilter = $('#dt-filter-category').value;
+    const q = $('#dt-search').value.trim().toLowerCase();
+    let rows = state.downtime.filter(e =>
+      (!machineFilter || e.machine===machineFilter) &&
+      (!catFilter || e.category===catFilter) &&
+      (!q || e.text.toLowerCase().includes(q))
+    );
+    rows.sort((a,b) => {
+      let av=a[downtimeSort.key], bv=b[downtimeSort.key];
+      if (downtimeSort.key==='date'){ av=av?av.getTime():0; bv=bv?bv.getTime():0; }
+      if (av<bv) return -1*downtimeSort.dir;
+      if (av>bv) return 1*downtimeSort.dir;
+      return 0;
+    });
+    renderTable('#table-downtime tbody', rows, [
+      { key:'machine', fmt:r=>machineBadge(r.machine) },
+      { key:'date', fmt:r=>fmtDate(r.date) },
+      { key:'time', cls:'mono' },
+      { key:'minutes', cls:'num' },
+      { key:'category', fmt:r=>catBadge(r.category) },
+      { key:'text' },
+    ]);
+  }
+
+  function renderParamsTable(){
+    renderTable('#table-params tbody', state.params, [
+      { key:'machine', fmt:r=>machineBadge(r.machine) },
+      { key:'date', fmt:r=>fmtDate(r.date) },
+      { key:'text' },
+    ]);
+  }
+  function renderIssuesTable(){
+    renderTable('#table-issues tbody', state.issues, [
+      { key:'machine', fmt:r=>machineBadge(r.machine) },
+      { key:'date', fmt:r=>fmtDate(r.date) },
+      { key:'text', fmt:r=> (r.openStart?`<span class="badge">เริ่ม ${r.openStart}</span> `:'') + r.text },
+    ]);
+  }
+
+  // ============================================================
+  // RENDER: FORMULA CHART
+  // ============================================================
+  let formulaChart = null;
+  function renderFormulaChart(){
+    const ctx = $('#chart-formula').getContext('2d');
+    const datasets = [];
+    const colors = ['#e8a33d','#49b6c4','#e0564f','#5cb87a','#9d7fd6'];
+    let labelsSet = new Set();
+    const perMachine = {};
+    state.machines.forEach((m, idx) => {
+      const tot = {};
+      m.batches.forEach(b => { tot[b.name] = (tot[b.name]||0) + b.qty; });
+      const top = Object.entries(tot).sort((a,b)=>b[1]-a[1]).slice(0,8);
+      perMachine[m.machine] = top;
+      top.forEach(([name]) => labelsSet.add(name));
+    });
+    // build union label set ordered by first machine's ranking, fallback append
+    const labels = Array.from(labelsSet);
+    state.machines.forEach((m, idx) => {
+      const map = Object.fromEntries(perMachine[m.machine]);
+      datasets.push({
+        label: m.machine,
+        data: labels.map(l => map[l] || 0),
+        backgroundColor: colors[idx % colors.length],
+        borderRadius: 2,
+      });
+    });
+    if (formulaChart) formulaChart.destroy();
+    formulaChart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: '#8fa0b3', font: { family: 'IBM Plex Mono', size: 11 } } },
+        },
+        scales: {
+          x: { ticks: { color: '#8fa0b3', font:{ family:'IBM Plex Mono', size:10 } }, grid:{ color:'#212a35' } },
+          y: { ticks: { color: '#8fa0b3', font:{ family:'IBM Plex Mono', size:10 } }, grid:{ color:'#212a35' }, beginAtZero:true },
+        }
+      }
+    });
+  }
+
+  // ============================================================
+  // RENDER: FAN SECTION
+  // ============================================================
+  function recomputeFan(){
+    if (!state.meter || !state.meterMachine){ $('#section-fan').classList.add('hidden'); return; }
+    $('#section-fan').classList.remove('hidden');
+    $('#fan-machine-hint').textContent = `เครื่อง: ${state.meterMachine} · ไฟล์: ${state.meter.fileName}`;
+    const rows = computeFanCrossRef();
+    renderTable('#table-fan tbody', rows, [
+      { key:'date', fmt:r=>fmtDate(r.date) },
+      { key:'time', cls:'mono' },
+      { key:'minutes', cls:'num' },
+      { key:'text' },
+      { key:'pmin', cls:'num', fmt:r=>r.pmin!=null?r.pmin.toFixed(2):'-' },
+      { key:'pmax', cls:'num', fmt:r=>r.pmax!=null?r.pmax.toFixed(2):'-' },
+      { key:'pavg', cls:'num', fmt:r=>r.pavg!=null?r.pavg.toFixed(2):'-' },
+      { key:'kwh', cls:'num', fmt:r=>r.kwh!=null?r.kwh.toFixed(1):'-' },
+      { key:'cost', cls:'num', fmt:r=>r.cost!=null?Math.round(r.cost).toLocaleString():'-' },
+      { key:'fanStatus' },
+    ]);
+    const totalKwh = rows.reduce((s,r)=>s+(r.kwh||0),0);
+    const totalCost = rows.reduce((s,r)=>s+(r.cost||0),0);
+    const neverOff = rows.every(r => r.fanStatus === 'ไม่ปิด - ยังทำงานตลอด');
+    const meterRows = state.meter.rows;
+    const monthKwh = meterRows.length ? (meterRows[meterRows.length-1].monthKwh ?? null) : null;
+    const fanOffHours = (() => {
+      let h = 0;
+      for (let i=0;i<meterRows.length-1;i++){
+        if (meterRows[i].pTotal === 0){
+          let dt = (meterRows[i+1].ts - meterRows[i].ts)/3600000;
+          if (dt > 5/60) dt = 5/60;
+          h += dt;
+        }
+      }
+      return h;
+    })();
+
+    const cardsEl = $('#fan-summary-cards');
+    cardsEl.innerHTML = '';
+    const cards = [
+      ['พลังงานสูญเสียระหว่างหยุดเครื่อง', totalKwh.toFixed(1)+' kWh', 'accent-red'],
+      ['ค่าไฟที่สูญเสีย', '~'+Math.round(totalCost).toLocaleString()+' บ.', 'accent-red'],
+      ['สถานะ Fan ระหว่างเครื่องหยุด', neverOff ? 'ไม่เคยปิดเลย' : 'พบบางช่วงปิด/หรี่', 'accent-amber'],
+      ['พลังงานรวมทั้งเดือน (มิเตอร์)', monthKwh!=null ? monthKwh.toLocaleString()+' kWh' : 'ไม่มีข้อมูล', 'accent-cyan'],
+      ['เวลาที่ P=0 ทั้งเดือน', fanOffHours.toFixed(1)+' ชม.', ''],
+    ];
+    cards.forEach(([k,v,accent]) => {
+      const c = document.createElement('div');
+      c.className = 'card ' + (accent||'');
+      c.innerHTML = `<div class="k">${k}</div><div class="v">${v}</div>`;
+      cardsEl.appendChild(c);
+    });
+    $('#btn-export-csv-fan').disabled = rows.length === 0;
+    state._fanRows = rows;
+  }
+
+  // ============================================================
+  // FILTER DROPDOWNS
+  // ============================================================
+  function populateFilters(){
+    const machineSel = $('#dt-filter-machine');
+    const catSel = $('#dt-filter-category');
+    const meterMachineSel = $('#cfg-meter-machine');
+    const machines = state.machines.map(m=>m.machine);
+    const cats = Array.from(new Set(state.downtime.map(e=>e.category))).sort();
+    machineSel.innerHTML = '<option value="">ทุกเครื่อง</option>' + machines.map(m=>`<option value="${m}">${m}</option>`).join('');
+    catSel.innerHTML = '<option value="">ทุกหมวดหมู่</option>' + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+    meterMachineSel.innerHTML = '<option value="">— เลือกเครื่อง —</option>' + machines.map(m=>`<option value="${m}">${m}</option>`).join('');
+    if (machines.length === 1) meterMachineSel.value = machines[0];
+  }
+
+  // ============================================================
+  // MAIN RENDER
+  // ============================================================
+  function renderAll(){
+    if (!state.machines.length){
+      $('#results').classList.add('hidden');
+      $('#empty-state').classList.remove('hidden');
+      return;
+    }
+    $('#results').classList.remove('hidden');
+    $('#empty-state').classList.add('hidden');
+    populateFilters();
+    renderHeatstrips();
+    renderOverview();
+    renderDowntimeTable();
+    renderParamsTable();
+    renderIssuesTable();
+    renderFormulaChart();
+    recomputeFan();
+  }
+
+  // ============================================================
+  // FILE HANDLING
+  // ============================================================
+  function setupDropzone(zoneId, inputId, onFile){
+    const zone = document.getElementById(zoneId);
+    const input = document.getElementById(inputId);
+    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('keypress', (e) => { if (e.key==='Enter') input.click(); });
+    input.addEventListener('change', (e) => { if (e.target.files[0]) onFile(e.target.files[0]); });
+    ['dragenter','dragover'].forEach(ev => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(ev => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.remove('drag'); }));
+    zone.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) onFile(f); });
+  }
+
+  setupDropzone('dz-production', 'input-production', async (file) => {
+    try{
+      const machines = await parseProductionWorkbook(file);
+      if (!machines.length){ alert('ไม่พบคอลัมน์ DATE ในไฟล์นี้ — ตรวจสอบว่าเป็นรูปแบบเดียวกับตัวอย่างหรือไม่'); return; }
+      state.machines = machines;
+      const built = buildEventsFromMachines(machines);
+      state.downtime = built.downtime;
+      state.params = built.params;
+      state.issues = built.issues;
+      $('#dz-production-file').classList.add('show');
+      $('#dz-production-file .fname').textContent = file.name;
+      readConfig();
+      renderAll();
+    } catch(err){
+      console.error(err);
+      alert('อ่านไฟล์ไม่สำเร็จ: ' + err.message);
+    }
+  });
+
+  setupDropzone('dz-meter', 'input-meter', async (file) => {
+    try{
+      const meter = await parseMeterFile(file);
+      if (!meter.rows.length){ alert('ไม่พบคอลัมน์ Timestamp / P-Total ที่อ่านได้ในไฟล์นี้'); return; }
+      state.meter = meter;
+      $('#dz-meter-file').classList.add('show');
+      $('#dz-meter-file .fname').textContent = file.name;
+      if (!state.meterMachine && state.machines.length) {
+        state.meterMachine = $('#cfg-meter-machine').value || state.machines[0].machine;
+        $('#cfg-meter-machine').value = state.meterMachine;
+      }
+      recomputeFan();
+    } catch(err){
+      console.error(err);
+      alert('อ่านไฟล์ CSV ไม่สำเร็จ: ' + err.message);
+    }
+  });
+
+  $('#cfg-meter-machine').addEventListener('change', (e) => { state.meterMachine = e.target.value; recomputeFan(); });
+
+  // ============================================================
+  // TABLE INTERACTIONS
+  // ============================================================
+  $all('#table-downtime thead th').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if (downtimeSort.key === key) downtimeSort.dir *= -1; else { downtimeSort.key = key; downtimeSort.dir = 1; }
+      $all('#table-downtime thead th').forEach(h=>h.classList.remove('sorted'));
+      th.classList.add('sorted');
+      renderDowntimeTable();
+    });
+  });
+  ['#dt-filter-machine','#dt-filter-category','#dt-search'].forEach(sel => {
+    $(sel).addEventListener('input', renderDowntimeTable);
+  });
+
+  // ============================================================
+  // EXPORT
+  // ============================================================
+  function downloadBlob(content, filename, type){
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  function toCSV(rows, cols){
+    const esc = (v) => `"${String(v ?? '').replace(/"/g,'""')}"`;
+    const header = cols.map(c=>esc(c)).join(',');
+    const body = rows.map(r => cols.map(c=>esc(r[c])).join(',')).join('\n');
+    return header + '\n' + body;
+  }
+
+  $('#btn-export-json').addEventListener('click', () => {
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      machines: state.machines.map(m => ({ machine:m.machine, batchCount:m.batches.length })),
+      downtime: state.downtime.map(e => ({ ...e, date: e.date ? fmtDateFull(e.date) : null })),
+      params: state.params.map(e => ({ ...e, date: e.date ? fmtDateFull(e.date) : null })),
+      issues: state.issues.map(e => ({ ...e, date: e.date ? fmtDateFull(e.date) : null })),
+      fan: (state._fanRows||[]).map(r => ({ ...r, date: r.date?fmtDateFull(r.date):null })),
+    };
+    downloadBlob(JSON.stringify(payload, null, 2), 'downtime-analysis.json', 'application/json');
+  });
+  $('#btn-export-csv-downtime').addEventListener('click', () => {
+    const rows = state.downtime.map(e => ({ machine:e.machine, date: e.date?fmtDateFull(e.date):'', time:e.time, minutes:e.minutes, category:e.category, text:e.text }));
+    downloadBlob(toCSV(rows, ['machine','date','time','minutes','category','text']), 'downtime-events.csv', 'text/csv');
+  });
+  $('#btn-export-csv-fan').addEventListener('click', () => {
+    const rows = (state._fanRows||[]).map(r => ({ machine:r.machine, date:r.date?fmtDateFull(r.date):'', time:r.time, minutes:r.minutes, text:r.text, pmin:r.pmin, pmax:r.pmax, pavg:r.pavg, kwh:r.kwh, cost:r.cost, fanStatus:r.fanStatus }));
+    downloadBlob(toCSV(rows, ['machine','date','time','minutes','text','pmin','pmax','pavg','kwh','cost','fanStatus']), 'fan-crossref.csv', 'text/csv');
+  });
+
+})();
+</script>
+</body>
+</html>
