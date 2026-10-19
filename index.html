@@ -437,13 +437,17 @@
         <h2>08 — เหตุการณ์หยุดเครื่อง vs สถานะ Fan</h2>
         <span class="hint" id="fan-machine-hint"></span>
       </div>
+      <div class="table-toolbar" style="border:1px solid var(--line);border-bottom:none;border-radius:3px 3px 0 0;">
+        <label style="font-size:12px;color:var(--text-dim);align-self:center;">เครื่อง/ชีทที่ใช้จับคู่กับมิเตอร์:</label>
+        <select id="fan-machine-select"></select>
+      </div>
       <div class="table-wrap">
         <div class="table-scroll">
           <table id="table-fan">
             <thead><tr>
               <th>วันที่</th><th>เวลา</th><th class="num">นาที</th><th>สาเหตุ</th>
               <th class="num">P ต่ำสุด</th><th class="num">P สูงสุด</th><th class="num">P เฉลี่ย</th>
-              <th class="num">kWh สูญเสีย</th><th class="num">ค่าไฟ (บ.)</th><th>สถานะ Fan</th>
+              <th class="num">kWh สูญเสีย</th><th class="num">kWh (เทียบมิเตอร์)</th><th class="num">ค่าไฟ (บ.)</th><th>สถานะ Fan</th>
             </tr></thead>
             <tbody></tbody>
           </table>
@@ -594,6 +598,8 @@
 
   const CATEGORY_RULES = [
     [/Cork\s*tape|ย้ายไปผลิต/i, 'เปลี่ยนงาน/วางแผนผลิต'],
+    [/Filler|ฟิลเลอร์|Scale|ถัง\s*\d/i, 'ระบบ Filler/เตรียมวัตถุดิบ'],
+    [/ไฟดับ|ไฟตก|ไฟฟ้าขัดข้อง/i, 'ไฟฟ้า/สาธารณูปโภค'],
     [/MCL|ใบมีด|โซ่ไลน์/i, 'ชุดตัดยางท้ายไลน์ (MCL)'],
     [/TCU|Temp.*(เสีย|ไม่.*เปิด)/i, 'ระบบควบคุมอุณหภูมิ'],
     [/น้ำมัน|ไฮดรอลิก|Feed/i, 'ระบบไฮดรอลิก/น้ำมัน'],
@@ -837,7 +843,9 @@
       const pavg = sum / sub.length;
       const cost = cfg.rateMode === 'flat' ? kwh * cfg.flatRate : (onKwh*onRate + offKwh*offRate);
       const fanStatus = pmin < cfg.fanOff ? 'ปิด - ไม่มีการทำงาน' : 'ไม่ปิด - ยังทำงานตลอด';
-      return { ...e, pmin, pmax, pavg, kwh, cost, fanStatus };
+      const kwhMeter = (sub[0].monthKwh != null && sub[sub.length-1].monthKwh != null && !isNaN(sub[0].monthKwh) && !isNaN(sub[sub.length-1].monthKwh))
+        ? Math.max(0, sub[sub.length-1].monthKwh - sub[0].monthKwh) : null;
+      return { ...e, pmin, pmax, pavg, kwh, kwhMeter, cost, fanStatus };
     });
   }
 
@@ -1021,6 +1029,7 @@
   function recomputeFan(){
     if (!state.meter || !state.meterMachine){ $('#section-fan').classList.add('hidden'); return; }
     $('#section-fan').classList.remove('hidden');
+    $('#fan-machine-select').value = state.meterMachine;
     $('#fan-machine-hint').textContent = `เครื่อง: ${state.meterMachine} · ไฟล์: ${state.meter.fileName}`;
     const rows = computeFanCrossRef();
     renderTable('#table-fan tbody', rows, [
@@ -1032,6 +1041,7 @@
       { key:'pmax', cls:'num', fmt:r=>r.pmax!=null?r.pmax.toFixed(2):'-' },
       { key:'pavg', cls:'num', fmt:r=>r.pavg!=null?r.pavg.toFixed(2):'-' },
       { key:'kwh', cls:'num', fmt:r=>r.kwh!=null?r.kwh.toFixed(1):'-' },
+      { key:'kwhMeter', cls:'num', fmt:r=>r.kwhMeter!=null?r.kwhMeter.toFixed(1):'-' },
       { key:'cost', cls:'num', fmt:r=>r.cost!=null?Math.round(r.cost).toLocaleString():'-' },
       { key:'fanStatus' },
     ]);
@@ -1074,6 +1084,21 @@
   // ============================================================
   // FILTER DROPDOWNS
   // ============================================================
+  // Pick the sheet that best matches the meter file: first by "MIX n" in the
+  // file name, otherwise the sheet with the most dated downtime events.
+  function guessMeterMachine(fileName){
+    const names = state.machines.map(m => m.machine);
+    const num = (fileName.match(/mix[\s_-]*(\d)/i) || [])[1];
+    if (num){
+      const hit = names.find(n => new RegExp('mix[\\s_-]*' + num, 'i').test(n));
+      if (hit) return hit;
+    }
+    const counts = {};
+    state.downtime.forEach(e => { if (e.date) counts[e.machine] = (counts[e.machine]||0) + 1; });
+    const best = Object.entries(counts).sort((a,b) => b[1]-a[1])[0];
+    return best ? best[0] : (names[0] || '');
+  }
+
   function populateFilters(){
     const machineSel = $('#dt-filter-machine');
     const catSel = $('#dt-filter-category');
@@ -1084,6 +1109,8 @@
     catSel.innerHTML = '<option value="">ทุกหมวดหมู่</option>' + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
     meterMachineSel.innerHTML = '<option value="">— เลือกเครื่อง —</option>' + machines.map(m=>`<option value="${m}">${m}</option>`).join('');
     if (machines.length === 1) meterMachineSel.value = machines[0];
+    const fanSel = $('#fan-machine-select');
+    fanSel.innerHTML = machines.map(m=>`<option value="${m}">${m}</option>`).join('');
   }
 
   // ============================================================
@@ -1147,10 +1174,8 @@
       state.meter = meter;
       $('#dz-meter-file').classList.add('show');
       $('#dz-meter-file .fname').textContent = file.name;
-      if (!state.meterMachine && state.machines.length) {
-        state.meterMachine = $('#cfg-meter-machine').value || state.machines[0].machine;
-        $('#cfg-meter-machine').value = state.meterMachine;
-      }
+      state.meterMachine = guessMeterMachine(meter.fileName);
+      $('#cfg-meter-machine').value = state.meterMachine;
       recomputeFan();
     } catch(err){
       console.error(err);
@@ -1159,6 +1184,7 @@
   });
 
   $('#cfg-meter-machine').addEventListener('change', (e) => { state.meterMachine = e.target.value; recomputeFan(); });
+  $('#fan-machine-select').addEventListener('change', (e) => { state.meterMachine = e.target.value; $('#cfg-meter-machine').value = e.target.value; recomputeFan(); });
 
   // ============================================================
   // TABLE INTERACTIONS
@@ -1216,7 +1242,5 @@
 
 })();
 </script>
-</body>
-</html>
 </body>
 </html>
