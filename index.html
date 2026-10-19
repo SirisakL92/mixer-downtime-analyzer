@@ -275,6 +275,34 @@
   .hidden{ display:none !important; }
 
   @media (prefers-reduced-motion: reduce){ *{ transition:none !important; animation:none !important; } }
+
+  /* ---------- readability pass ---------- */
+  html{ scroll-behavior:smooth; }
+  section{ scroll-margin-top: 64px; }
+  .table-scroll thead th{ position:sticky; top:0; z-index:1; }
+  tbody tr:nth-child(even){ background: rgba(255,255,255,.018); }
+  tbody tr:hover{ background: var(--panel-2); }
+  .nowrap{ white-space:nowrap; }
+  td .subtxt{ display:block; font-size:11px; color:var(--text-faint); font-family:var(--sans); }
+  td.decisive{ color: var(--amber); font-weight:600; }
+  th.decisive{ color: var(--amber); }
+  .badge.on{ color: var(--red); border-color: var(--red-dim); background: rgba(224,86,79,.10); }
+  .badge.off{ color: var(--green); border-color:#2c5a3b; background: rgba(92,184,122,.10); }
+  .badge.na{ color: var(--text-faint); }
+  .cards.hero{ grid-template-columns: repeat(auto-fit, minmax(215px,1fr)); }
+  .card .sub{ margin-top:6px; font-size:12px; color:var(--text-dim); }
+  .card .v .u{ font-size:13px; color:var(--text-dim); font-weight:400; margin-left:6px; font-family:var(--sans); }
+  .card.accent-green .v{ color: var(--green); }
+  .bar{ display:inline-block; width:90px; height:6px; border-radius:3px; background:var(--line-soft); vertical-align:middle; margin-right:8px; overflow:hidden; }
+  .bar > i{ display:block; height:100%; }
+  tr.group-row td{ background: var(--panel-2); color: var(--text); font-weight:600; font-size:12px; border-bottom:1px solid var(--line); }
+  tr.group-row td small{ color:var(--text-faint); font-weight:400; margin-left:8px; }
+  tr.total-row td{ background: var(--panel-2); color: var(--text); font-weight:600; }
+  .block-gap{ height:22px; }
+  .sub-title{ font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-dim); margin:0 0 10px; font-weight:600; }
+  .tnav{ position:sticky; top:0; z-index:20; display:flex; gap:4px; flex-wrap:wrap; padding:10px 0; margin:-8px 0 24px; background:rgba(16,21,27,.92); backdrop-filter:blur(6px); border-bottom:1px solid var(--line); }
+  .tnav a{ font-size:12px; color:var(--text-dim); text-decoration:none; padding:5px 10px; border-radius:3px; border:1px solid transparent; }
+  .tnav a:hover{ color:var(--text); border-color:var(--line); }
 </style>
 </head>
 <body>
@@ -351,6 +379,11 @@
 
   <!-- ================= RESULTS (hidden until data loaded) ================= -->
   <div id="results" class="hidden">
+    <nav class="tnav">
+      <a href="#section-heat">ปฏิทิน</a><a href="#section-overview">ภาพรวม</a><a href="#section-downtime">Downtime</a>
+      <a href="#section-params">พารามิเตอร์</a><a href="#section-issues">ปัญหาอื่น</a><a href="#section-formula">สูตร</a>
+      <a href="#section-fan">Fan / ไฟฟ้า</a><a href="#section-export">ส่งออก</a>
+    </nav>
 
     <section id="section-heat">
       <div class="section-head">
@@ -365,7 +398,15 @@
 
     <section id="section-overview">
       <div class="section-head"><h2>03 — ภาพรวมตามเครื่อง</h2></div>
-      <div id="overview-cards" class="cards"></div>
+      <div class="table-wrap">
+        <table id="table-overview">
+          <thead><tr>
+            <th>เครื่อง / ชีท</th><th class="num">จำนวน batch</th><th class="num">จำนวนสูตร</th>
+            <th class="num">เปลี่ยนสูตร (ล้างเครื่อง)</th><th class="num">เวลาหยุด (ชม.)</th><th class="num">ปรับพารามิเตอร์ (ครั้ง)</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </section>
 
     <section id="section-downtime">
@@ -385,7 +426,7 @@
               <th data-key="machine">เครื่อง</th>
               <th data-key="date">วันที่</th>
               <th data-key="time">เวลา</th>
-              <th data-key="minutes" class="num">นาที</th>
+              <th data-key="minutes" class="num">ระยะเวลา</th>
               <th data-key="category">หมวดหมู่</th>
               <th data-key="text">เหตุการณ์</th>
             </tr></thead>
@@ -437,35 +478,38 @@
         <h2>08 — เหตุการณ์หยุดเครื่อง vs สถานะ Fan</h2>
         <span class="hint" id="fan-machine-hint"></span>
       </div>
-      <div class="table-toolbar" style="border:1px solid var(--line);border-bottom:none;border-radius:3px 3px 0 0;">
+      <div class="table-toolbar" style="border:1px solid var(--line);border-radius:3px;margin-bottom:16px;">
         <label style="font-size:12px;color:var(--text-dim);align-self:center;">เครื่อง/ชีทที่ใช้จับคู่กับมิเตอร์:</label>
         <select id="fan-machine-select"></select>
       </div>
+
+      <div id="fan-summary-cards" class="cards hero"></div>
+
+      <div class="block-gap"></div>
+      <div class="section-head" style="margin-bottom:10px;"><h2 style="font-size:12px;">สรุปรวมชั่วโมง Fan เปิด / ปิด</h2><span class="hint" id="fan-hours-hint"></span></div>
+      <div class="table-wrap">
+        <table id="table-fan-hours">
+          <thead><tr>
+            <th>สถานะ Fan</th><th class="num">จำนวนครั้ง</th><th class="num">ชั่วโมงรวม</th>
+            <th>สัดส่วน</th><th class="num">kWh</th><th class="num">ค่าไฟ (บ.)</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="block-gap"></div>
+      <div class="section-head" style="margin-bottom:10px;"><h2 style="font-size:12px;">รายละเอียดรายเหตุการณ์</h2><span class="hint">★ = ค่าที่ใช้ตัดสินสถานะ Fan</span></div>
       <div class="table-wrap">
         <div class="table-scroll">
           <table id="table-fan">
             <thead><tr>
-              <th>วันที่</th><th>เวลา</th><th class="num">นาที</th><th>สาเหตุ</th>
-              <th class="num">P ต่ำสุด</th><th class="num">P สูงสุด</th><th class="num">P เฉลี่ย</th>
-              <th class="num">kWh สูญเสีย</th><th class="num">kWh (เทียบมิเตอร์)</th><th class="num">ค่าไฟ (บ.)</th><th>สถานะ Fan</th>
+              <th>วันที่</th><th>เวลา</th><th class="num">ระยะเวลา</th><th>สาเหตุ</th>
+              <th class="num decisive">P ต่ำสุด ★</th><th class="num">P เฉลี่ย</th><th class="num">P สูงสุด</th>
+              <th class="num">kWh</th><th class="num">ค่าไฟ (บ.)</th><th>สถานะ Fan</th>
             </tr></thead>
             <tbody></tbody>
           </table>
         </div>
-      </div>
-      <div style="height:16px"></div>
-      <div id="fan-summary-cards" class="cards"></div>
-      <div style="height:16px"></div>
-      <div class="section-head"><h2>สรุปรวมชั่วโมง Fan เปิด / ปิด</h2><span class="hint" id="fan-hours-hint"></span></div>
-      <div class="table-wrap">
-        <table id="table-fan-hours">
-          <thead><tr>
-            <th>ช่วงเวลา</th><th>สถานะ Fan</th><th class="num">จำนวนครั้ง</th>
-            <th class="num">ชั่วโมงรวม</th><th class="num">% ของช่วงนั้น</th>
-            <th class="num">kWh</th><th class="num">ค่าไฟ (บ.)</th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
       </div>
     </section>
 
@@ -908,30 +952,19 @@
   // RENDER: OVERVIEW CARDS
   // ============================================================
   function renderOverview(){
-    const container = $('#overview-cards');
-    container.innerHTML = '';
-    state.machines.forEach(m => {
+    const tb = $('#table-overview tbody');
+    let tot = { batch:0, dt:0, par:0, co:0 };
+    const rows = state.machines.map(m => {
       const batchTotal = m.batches.reduce((s,b)=>s+b.qty,0);
       const formulaCount = new Set(m.batches.map(b=>b.name)).size;
       const changeovers = m.batches.filter(b => /ล้างเครื่อง/.test(b.note||'')).length;
-      const dtMinutes = state.downtime.filter(e=>e.machine===m.machine).reduce((s,e)=>s+e.minutes,0);
+      const dtMin = state.downtime.filter(e=>e.machine===m.machine).reduce((s,e)=>s+e.minutes,0);
       const paramCount = state.params.filter(p=>p.machine===m.machine).length;
-
-      const items = [
-        ['เครื่อง', m.machine, ''],
-        ['จำนวน batch', batchTotal.toLocaleString(), ''],
-        ['จำนวนสูตร', formulaCount, ''],
-        ['เปลี่ยนสูตร (ล้างเครื่อง)', changeovers, ''],
-        ['เวลาหยุดเครื่อง', (dtMinutes/60).toFixed(1)+' ชม.', 'accent-red'],
-        ['ปรับพารามิเตอร์', paramCount+' ครั้ง', 'accent-amber'],
-      ];
-      items.forEach(([k,v,accent]) => {
-        const c = document.createElement('div');
-        c.className = 'card ' + (accent||'');
-        c.innerHTML = `<div class="k">${k}</div><div class="v">${v}</div>`;
-        container.appendChild(c);
-      });
+      tot.batch += batchTotal; tot.dt += dtMin; tot.par += paramCount; tot.co += changeovers;
+      return `<tr><td>${machineBadge(m.machine)}</td><td class="num">${batchTotal.toLocaleString()}</td><td class="num">${formulaCount}</td><td class="num">${changeovers}</td><td class="num" style="color:${dtMin?'var(--red)':'inherit'}">${(dtMin/60).toFixed(1)}</td><td class="num">${paramCount}</td></tr>`;
     });
+    rows.push(`<tr class="total-row"><td>รวมทุกเครื่อง</td><td class="num">${tot.batch.toLocaleString()}</td><td class="num">-</td><td class="num">${tot.co}</td><td class="num">${(tot.dt/60).toFixed(1)}</td><td class="num">${tot.par}</td></tr>`);
+    tb.innerHTML = rows.join('');
   }
 
   // ============================================================
@@ -943,6 +976,27 @@
       const val = c.fmt ? c.fmt(r) : (r[c.key] ?? '-');
       return `<td class="${c.cls||''}">${val}</td>`;
     }).join('') + '</tr>').join('') || '<tr><td colspan="10" style="text-align:center;color:var(--text-faint);padding:24px;">ไม่มีข้อมูล</td></tr>';
+  }
+
+  // ---------- display helpers ----------
+  function cleanCause(t){
+    return String(t||'')
+      .replace(/^\s*[-–•]+\s*/, '')
+      .replace(/^\s*\d+\s*\.\s*/, '')
+      .replace(/เวลา\s*\d{1,2}[.:]\d{2}\s*-\s*\d{1,2}[.:]\d{2}\s*น\.?\s*/g, '')
+      .replace(/ตั้งแต่เวลา\s*\d{1,2}[.:]\d{2}\s*น\.?\s*/g, '')
+      .replace(/\s+/g, ' ').trim() || String(t||'');
+  }
+  function fmtDur(min){
+    const h = Math.floor(min/60), m = Math.round(min%60);
+    if (!h) return m + ' น.';
+    return h + ' ชม.' + (m ? ' ' + m + ' น.' : '');
+  }
+  function statusBadge(s){
+    if (!s) return '-';
+    if (s.startsWith('ไม่ปิด')) return '<span class="badge on">● เปิดอยู่</span>';
+    if (s.startsWith('ปิด')) return '<span class="badge off">● ปิดแล้ว</span>';
+    return '<span class="badge na">ไม่มีข้อมูลมิเตอร์</span>';
   }
 
   function machineBadge(m){ return `<span class="badge mch">${m}</span>`; }
@@ -969,9 +1023,9 @@
       { key:'machine', fmt:r=>machineBadge(r.machine) },
       { key:'date', fmt:r=>fmtDate(r.date) },
       { key:'time', cls:'mono' },
-      { key:'minutes', cls:'num' },
+      { key:'minutes', cls:'num nowrap', fmt:r=>fmtDur(r.minutes) },
       { key:'category', fmt:r=>catBadge(r.category) },
-      { key:'text' },
+      { key:'text', fmt:r=>cleanCause(r.text) },
     ]);
   }
 
@@ -979,14 +1033,14 @@
     renderTable('#table-params tbody', state.params, [
       { key:'machine', fmt:r=>machineBadge(r.machine) },
       { key:'date', fmt:r=>fmtDate(r.date) },
-      { key:'text' },
+      { key:'text', fmt:r=>cleanCause(r.text) },
     ]);
   }
   function renderIssuesTable(){
     renderTable('#table-issues tbody', state.issues, [
       { key:'machine', fmt:r=>machineBadge(r.machine) },
       { key:'date', fmt:r=>fmtDate(r.date) },
-      { key:'text', fmt:r=> (r.openStart?`<span class="badge">เริ่ม ${r.openStart}</span> `:'') + r.text },
+      { key:'text', fmt:r=> (r.openStart?`<span class="badge">เริ่ม ${r.openStart}</span> `:'') + cleanCause(r.text) },
     ]);
   }
 
@@ -1045,17 +1099,16 @@
     $('#fan-machine-hint').textContent = `เครื่อง: ${state.meterMachine} · ไฟล์: ${state.meter.fileName}`;
     const rows = computeFanCrossRef();
     renderTable('#table-fan tbody', rows, [
-      { key:'date', fmt:r=>fmtDate(r.date) },
-      { key:'time', cls:'mono' },
-      { key:'minutes', cls:'num' },
-      { key:'text' },
-      { key:'pmin', cls:'num', fmt:r=>r.pmin!=null?r.pmin.toFixed(2):'-' },
-      { key:'pmax', cls:'num', fmt:r=>r.pmax!=null?r.pmax.toFixed(2):'-' },
+      { key:'date', cls:'nowrap', fmt:r=>fmtDate(r.date) },
+      { key:'time', cls:'mono nowrap' },
+      { key:'minutes', cls:'num nowrap', fmt:r=>fmtDur(r.minutes) },
+      { key:'text', fmt:r=>cleanCause(r.text) },
+      { key:'pmin', cls:'num decisive', fmt:r=>r.pmin!=null?r.pmin.toFixed(2):'-' },
       { key:'pavg', cls:'num', fmt:r=>r.pavg!=null?r.pavg.toFixed(2):'-' },
-      { key:'kwh', cls:'num', fmt:r=>r.kwh!=null?r.kwh.toFixed(1):'-' },
-      { key:'kwhMeter', cls:'num', fmt:r=>r.kwhMeter!=null?r.kwhMeter.toFixed(1):'-' },
+      { key:'pmax', cls:'num', fmt:r=>r.pmax!=null?r.pmax.toFixed(2):'-' },
+      { key:'kwh', cls:'num', fmt:r=>r.kwh!=null ? r.kwh.toFixed(1) + (r.kwhMeter!=null?`<span class="subtxt">มิเตอร์ ${r.kwhMeter.toFixed(1)}</span>`:'') : '-' },
       { key:'cost', cls:'num', fmt:r=>r.cost!=null?Math.round(r.cost).toLocaleString():'-' },
-      { key:'fanStatus' },
+      { key:'fanStatus', cls:'nowrap', fmt:r=>statusBadge(r.fanStatus) },
     ]);
     const totalKwh = rows.reduce((s,r)=>s+(r.kwh||0),0);
     const totalCost = rows.reduce((s,r)=>s+(r.cost||0),0);
@@ -1088,24 +1141,19 @@
       if (dt > 5/60) dt = 5/60;
       if (meterRows[i].pTotal >= state.cfg.fanOff) monOnH += dt; else monOffH += dt;
     }
+    const pctLoss = (monthKwh && monthKwh > 0) ? (totalKwh/monthKwh*100).toFixed(1) : null;
     const cards = [
-      ['Fan เปิด (ไม่ปิด) ขณะเครื่องหยุด', evOnH.toFixed(1)+' ชม. <small>('+evOn.length+' ครั้ง)</small>', 'accent-red'],
-      ['Fan ปิด ขณะเครื่องหยุด', evOffH.toFixed(1)+' ชม. <small>('+evOff.length+' ครั้ง)</small>', 'accent-cyan'],
-      ['รวมเวลาเครื่องหยุด (ที่จับคู่ได้)', (evOnH+evOffH).toFixed(1)+' ชม.', ''],
-      ['kWh / ค่าไฟ ช่วง Fan เปิดขณะหยุด', evOnKwh.toFixed(1)+' kWh <small>~'+Math.round(evOnCost).toLocaleString()+' บ.</small>', 'accent-red'],
-      ['Fan เปิดทั้งเดือน (P ≥ '+state.cfg.fanOff+' kW)', monOnH.toFixed(1)+' ชม.', 'accent-amber'],
-      ['Fan ปิดทั้งเดือน (P < '+state.cfg.fanOff+' kW)', monOffH.toFixed(1)+' ชม.', ''],
-      ['พลังงานสูญเสียระหว่างหยุดเครื่อง', totalKwh.toFixed(1)+' kWh', 'accent-red'],
-      ['ค่าไฟที่สูญเสีย', '~'+Math.round(totalCost).toLocaleString()+' บ.', 'accent-red'],
-      ['สถานะ Fan ระหว่างเครื่องหยุด', neverOff ? 'ไม่เคยปิดเลย' : 'พบบางช่วงปิด/หรี่', 'accent-amber'],
-      ['พลังงานรวมทั้งเดือน (มิเตอร์)', monthKwh!=null ? monthKwh.toLocaleString()+' kWh' : 'ไม่มีข้อมูล', 'accent-cyan'],
-      ['เวลาที่ P=0 ทั้งเดือน', fanOffHours.toFixed(1)+' ชม.', ''],
+      { k:'เครื่องหยุดรวม', v:(evOnH+evOffH).toFixed(1), u:'ชม.', sub: rows.filter(r=>r.pmin!=null).length + ' เหตุการณ์ที่จับคู่มิเตอร์ได้', cls:'' },
+      { k:'Fan เปิดอยู่ ขณะเครื่องหยุด', v:evOnH.toFixed(1), u:'ชม.', sub: evOn.length + ' ครั้ง · ' + evOnKwh.toFixed(1) + ' kWh สิ้นเปลือง', cls:'accent-red' },
+      { k:'Fan ปิดแล้ว ขณะเครื่องหยุด', v:evOffH.toFixed(1), u:'ชม.', sub: evOff.length + ' ครั้ง', cls:'accent-green' },
+      { k:'ค่าไฟที่สูญเสียรวม', v:'~' + Math.round(totalCost).toLocaleString(), u:'บาท', sub: totalKwh.toFixed(1) + ' kWh · ช่วง Fan เปิด ~' + Math.round(evOnCost).toLocaleString() + ' บาท', cls:'accent-amber' },
+      { k:'พลังงานรวมทั้งช่วงมิเตอร์', v: monthKwh!=null ? monthKwh.toLocaleString() : '-', u:'kWh', sub: pctLoss ? 'สูญเสียขณะเครื่องหยุด ' + pctLoss + '%' : '', cls:'accent-cyan' },
     ];
-    cards.forEach(([k,v,accent]) => {
-      const c = document.createElement('div');
-      c.className = 'card ' + (accent||'');
-      c.innerHTML = `<div class="k">${k}</div><div class="v">${v}</div>`;
-      cardsEl.appendChild(c);
+    cards.forEach(c => {
+      const el = document.createElement('div');
+      el.className = 'card ' + c.cls;
+      el.innerHTML = `<div class="k">${c.k}</div><div class="v">${c.v}<span class="u">${c.u}</span></div><div class="sub">${c.sub}</div>`;
+      cardsEl.appendChild(el);
     });
     // ---- summary of Fan ON / OFF hours ----
     const valid = rows.filter(r => r.pmin != null);
@@ -1123,17 +1171,26 @@
       if (meterRows[i].pTotal >= state.cfg.fanOff) monthOnH += dt; else monthOffH += dt;
     }
     const monthTotalH = monthOnH + monthOffH;
-    const hoursRows = [
-      { period:'ระหว่างเครื่องหยุด', status:'Fan เปิด (ไม่ปิด)', n:onEv.length, h:hrs(sumBy(onEv,r=>r.minutes)), p:pct(sumBy(onEv,r=>r.minutes),dtTotalMin), kwh:sumBy(onEv,r=>r.kwh).toFixed(1), cost:Math.round(sumBy(onEv,r=>r.cost)).toLocaleString() },
-      { period:'ระหว่างเครื่องหยุด', status:'Fan ปิด', n:offEv.length, h:hrs(sumBy(offEv,r=>r.minutes)), p:pct(sumBy(offEv,r=>r.minutes),dtTotalMin), kwh:sumBy(offEv,r=>r.kwh).toFixed(1), cost:Math.round(sumBy(offEv,r=>r.cost)).toLocaleString() },
-      { period:'ระหว่างเครื่องหยุด', status:'รวม', n:valid.length, h:hrs(dtTotalMin), p:'100%', kwh:sumBy(valid,r=>r.kwh).toFixed(1), cost:Math.round(sumBy(valid,r=>r.cost)).toLocaleString(), total:true },
-      { period:'ทั้งช่วงมิเตอร์', status:'Fan เปิด (P ≥ '+state.cfg.fanOff+' kW)', n:'-', h:monthOnH.toFixed(2), p:pct(monthOnH,monthTotalH), kwh:'-', cost:'-' },
-      { period:'ทั้งช่วงมิเตอร์', status:'Fan ปิด (P < '+state.cfg.fanOff+' kW)', n:'-', h:monthOffH.toFixed(2), p:pct(monthOffH,monthTotalH), kwh:'-', cost:'-' },
-      { period:'ทั้งช่วงมิเตอร์', status:'รวม', n:'-', h:monthTotalH.toFixed(2), p:'100%', kwh:'-', cost:'-', total:true },
-    ];
-    $('#table-fan-hours tbody').innerHTML = hoursRows.map(r =>
-      `<tr${r.total?' style="background:var(--panel-2)"':''}><td>${r.period}</td><td>${r.status}</td><td class="num">${r.n}</td><td class="num">${r.h}</td><td class="num">${r.p}</td><td class="num">${r.kwh}</td><td class="num">${r.cost}</td></tr>`).join('');
-    $('#fan-hours-hint').textContent = 'เปิด/ปิดตัดสินที่ P ต่ำสุด < ' + state.cfg.fanOff + ' kW (รายเหตุการณ์) และ P รายค่าอ่าน (ทั้งช่วงมิเตอร์)';
+    const bar = (p, color) => `<span class="bar"><i style="width:${Math.min(100,p)}%;background:${color}"></i></span>`;
+    const num = (v) => (v==null ? '-' : v);
+    const mk = (status, n, hh, share, kwh, cost, color, total) => {
+      if (total) return `<tr class="total-row"><td>รวม</td><td class="num">${n}</td><td class="num">${hh}</td><td>100%</td><td class="num">${num(kwh)}</td><td class="num">${num(cost)}</td></tr>`;
+      return `<tr><td>${status}</td><td class="num">${n}</td><td class="num">${hh}</td><td>${bar(share,color)}${share.toFixed(1)}%</td><td class="num">${num(kwh)}</td><td class="num">${num(cost)}</td></tr>`;
+    };
+    const evTot = dtTotalMin || 1, moTot = monthTotalH || 1;
+    const onMin = sumBy(onEv,r=>r.minutes), offMin = sumBy(offEv,r=>r.minutes);
+    const fmtC = (a) => Math.round(sumBy(a,r=>r.cost)).toLocaleString();
+    const hoursRows = [];
+    $('#table-fan-hours tbody').innerHTML =
+      `<tr class="group-row"><td colspan="6">ช่วงที่เครื่องหยุด<small>ตัดสินที่ P ต่ำสุดรายเหตุการณ์ &lt; ${state.cfg.fanOff} kW</small></td></tr>` +
+      mk('<span class="badge on">● Fan เปิดอยู่</span>', onEv.length, hrs(onMin), onMin/evTot*100, sumBy(onEv,r=>r.kwh).toFixed(1), fmtC(onEv), 'var(--red)') +
+      mk('<span class="badge off">● Fan ปิดแล้ว</span>', offEv.length, hrs(offMin), offMin/evTot*100, sumBy(offEv,r=>r.kwh).toFixed(1), fmtC(offEv), 'var(--green)') +
+      mk('', valid.length, hrs(dtTotalMin), 100, sumBy(valid,r=>r.kwh).toFixed(1), fmtC(valid), '', true) +
+      `<tr class="group-row"><td colspan="6">ตลอดช่วงข้อมูลมิเตอร์<small>ตัดสินที่ P รายค่าอ่าน ≥ ${state.cfg.fanOff} kW = เปิด</small></td></tr>` +
+      mk('<span class="badge on">● Fan เปิดอยู่</span>', '-', monthOnH.toFixed(2), monthOnH/moTot*100, null, null, 'var(--red)') +
+      mk('<span class="badge off">● Fan ปิดแล้ว</span>', '-', monthOffH.toFixed(2), monthOffH/moTot*100, null, null, 'var(--green)') +
+      mk('', '-', monthTotalH.toFixed(2), 100, null, null, '', true);
+    $('#fan-hours-hint').textContent = 'หน่วย: ชั่วโมง';
     state._hoursRows = hoursRows;
     $('#btn-export-csv-fan').disabled = rows.length === 0;
     state._fanRows = rows;
