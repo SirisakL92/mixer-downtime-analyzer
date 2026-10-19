@@ -323,13 +323,20 @@
     <details class="config">
       <summary>ตั้งค่าอัตราค่าไฟ (TOU) และเกณฑ์การจับเหตุการณ์</summary>
       <div class="config-body">
-        <div class="field"><label>On-Peak เริ่ม (ชม.)</label><input type="number" id="cfg-onstart" value="9" min="0" max="23"></div>
-        <div class="field"><label>On-Peak สิ้นสุด (ชม.)</label><input type="number" id="cfg-onend" value="22" min="1" max="24"></div>
-        <div class="field"><label>อัตรา On-Peak (บ./หน่วย)</label><input type="number" id="cfg-onrate" value="4.1025" step="0.0001"></div>
-        <div class="field"><label>อัตรา Off-Peak (บ./หน่วย)</label><input type="number" id="cfg-offrate" value="2.5849" step="0.0001"></div>
-        <div class="field"><label>Ft (บ./หน่วย)</label><input type="number" id="cfg-ft" value="0.1623" step="0.0001"></div>
-        <div class="field"><label>VAT (%)</label><input type="number" id="cfg-vat" value="7" step="0.1"></div>
-        <div class="field"><label>เกณฑ์ Fan "ปิด" (kW ต่ำกว่า)</label><input type="number" id="cfg-fanoff" value="0.5" step="0.1"></div>
+        <div class="field"><label>โหมดคำนวณค่าไฟ</label>
+          <select id="cfg-rate-mode">
+            <option value="flat" selected>อัตราคงที่ (บาท/kWh)</option>
+            <option value="tou">TOU (On-Peak / Off-Peak)</option>
+          </select>
+        </div>
+        <div class="field" id="field-flatrate"><label>อัตราค่าไฟฟ้าคงที่ (บ./หน่วย)</label><input type="number" id="cfg-flatrate" value="3.88" step="0.01"></div>
+        <div class="field tou-field hidden"><label>On-Peak เริ่ม (ชม.)</label><input type="number" id="cfg-onstart" value="9" min="0" max="23"></div>
+        <div class="field tou-field hidden"><label>On-Peak สิ้นสุด (ชม.)</label><input type="number" id="cfg-onend" value="22" min="1" max="24"></div>
+        <div class="field tou-field hidden"><label>อัตรา On-Peak (บ./หน่วย)</label><input type="number" id="cfg-onrate" value="4.1025" step="0.0001"></div>
+        <div class="field tou-field hidden"><label>อัตรา Off-Peak (บ./หน่วย)</label><input type="number" id="cfg-offrate" value="2.5849" step="0.0001"></div>
+        <div class="field tou-field hidden"><label>Ft (บ./หน่วย)</label><input type="number" id="cfg-ft" value="0.1623" step="0.0001"></div>
+        <div class="field tou-field hidden"><label>VAT (%)</label><input type="number" id="cfg-vat" value="7" step="0.1"></div>
+        <div class="field"><label>เกณฑ์ Fan "ปิด" (P ต่ำสุด ต่ำกว่า kW)</label><input type="number" id="cfg-fanoff" value="5" step="0.1"></div>
         <div class="field"><label>เครื่องที่จะจับคู่กับไฟล์มิเตอร์</label><select id="cfg-meter-machine"><option value="">— นำเข้าบันทึกการผลิตก่อน —</option></select></div>
       </div>
     </details>
@@ -490,15 +497,24 @@
   // ============================================================
   function readConfig(){
     state.cfg = {
+      rateMode: $('#cfg-rate-mode').value,
+      flatRate: parseFloat($('#cfg-flatrate').value),
       onStart: parseInt($('#cfg-onstart').value,10),
       onEnd: parseInt($('#cfg-onend').value,10),
       onRate: parseFloat($('#cfg-onrate').value),
       offRate: parseFloat($('#cfg-offrate').value),
       ft: parseFloat($('#cfg-ft').value),
       vat: parseFloat($('#cfg-vat').value),
-      fanOff: parseFloat($('#cfg-fanoff').value),
+      fanOff: parseFloat($('#cfg-fanoff').value), // threshold on MINIMUM power (kW) — avoids post-repair test runs masking a real stop
     };
   }
+  function toggleRateFields(){
+    const isFlat = $('#cfg-rate-mode').value === 'flat';
+    $('#field-flatrate').classList.toggle('hidden', !isFlat);
+    $all('.tou-field').forEach(el => el.classList.toggle('hidden', isFlat));
+  }
+  toggleRateFields();
+  $('#cfg-rate-mode').addEventListener('change', () => { toggleRateFields(); readConfig(); recomputeFan(); });
   $all('.config-body input').forEach(el => el.addEventListener('change', () => { readConfig(); recomputeFan(); }));
   readConfig();
 
@@ -818,9 +834,9 @@
         kwh += e_;
         if (isOnPeak(r.ts, cfg)) onKwh += e_; else offKwh += e_;
       }
-      const cost = onKwh*onRate + offKwh*offRate;
       const pavg = sum / sub.length;
-      const fanStatus = pmax < cfg.fanOff ? 'ปิด - ไม่มีการทำงาน' : 'ไม่ปิด - ยังทำงานตลอด';
+      const cost = cfg.rateMode === 'flat' ? kwh * cfg.flatRate : (onKwh*onRate + offKwh*offRate);
+      const fanStatus = pmin < cfg.fanOff ? 'ปิด - ไม่มีการทำงาน' : 'ไม่ปิด - ยังทำงานตลอด';
       return { ...e, pmin, pmax, pavg, kwh, cost, fanStatus };
     });
   }
@@ -1200,5 +1216,7 @@
 
 })();
 </script>
+</body>
+</html>
 </body>
 </html>
