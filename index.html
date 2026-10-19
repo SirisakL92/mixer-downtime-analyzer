@@ -455,6 +455,18 @@
       </div>
       <div style="height:16px"></div>
       <div id="fan-summary-cards" class="cards"></div>
+      <div style="height:16px"></div>
+      <div class="section-head"><h2>สรุปรวมชั่วโมง Fan เปิด / ปิด</h2><span class="hint" id="fan-hours-hint"></span></div>
+      <div class="table-wrap">
+        <table id="table-fan-hours">
+          <thead><tr>
+            <th>ช่วงเวลา</th><th>สถานะ Fan</th><th class="num">จำนวนครั้ง</th>
+            <th class="num">ชั่วโมงรวม</th><th class="num">% ของช่วงนั้น</th>
+            <th class="num">kWh</th><th class="num">ค่าไฟ (บ.)</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </section>
 
     <section id="section-export">
@@ -1064,7 +1076,25 @@
 
     const cardsEl = $('#fan-summary-cards');
     cardsEl.innerHTML = '';
+    // ---- on/off hour summary (threshold = cfg.fanOff on P ต่ำสุด for events, on P for month) ----
+    const isOnRow = r => r.fanStatus && r.fanStatus.startsWith('ไม่ปิด');
+    const isOffRow = r => r.fanStatus && r.fanStatus.startsWith('ปิด');
+    const evOn = rows.filter(isOnRow), evOff = rows.filter(isOffRow);
+    const evOnH = evOn.reduce((s,r)=>s+r.minutes,0)/60, evOffH = evOff.reduce((s,r)=>s+r.minutes,0)/60;
+    const evOnKwh = evOn.reduce((s,r)=>s+(r.kwh||0),0), evOnCost = evOn.reduce((s,r)=>s+(r.cost||0),0);
+    let monOnH = 0, monOffH = 0;
+    for (let i=0;i<meterRows.length-1;i++){
+      let dt = (meterRows[i+1].ts - meterRows[i].ts)/3600000;
+      if (dt > 5/60) dt = 5/60;
+      if (meterRows[i].pTotal >= state.cfg.fanOff) monOnH += dt; else monOffH += dt;
+    }
     const cards = [
+      ['Fan เปิด (ไม่ปิด) ขณะเครื่องหยุด', evOnH.toFixed(1)+' ชม. <small>('+evOn.length+' ครั้ง)</small>', 'accent-red'],
+      ['Fan ปิด ขณะเครื่องหยุด', evOffH.toFixed(1)+' ชม. <small>('+evOff.length+' ครั้ง)</small>', 'accent-cyan'],
+      ['รวมเวลาเครื่องหยุด (ที่จับคู่ได้)', (evOnH+evOffH).toFixed(1)+' ชม.', ''],
+      ['kWh / ค่าไฟ ช่วง Fan เปิดขณะหยุด', evOnKwh.toFixed(1)+' kWh <small>~'+Math.round(evOnCost).toLocaleString()+' บ.</small>', 'accent-red'],
+      ['Fan เปิดทั้งเดือน (P ≥ '+state.cfg.fanOff+' kW)', monOnH.toFixed(1)+' ชม.', 'accent-amber'],
+      ['Fan ปิดทั้งเดือน (P < '+state.cfg.fanOff+' kW)', monOffH.toFixed(1)+' ชม.', ''],
       ['พลังงานสูญเสียระหว่างหยุดเครื่อง', totalKwh.toFixed(1)+' kWh', 'accent-red'],
       ['ค่าไฟที่สูญเสีย', '~'+Math.round(totalCost).toLocaleString()+' บ.', 'accent-red'],
       ['สถานะ Fan ระหว่างเครื่องหยุด', neverOff ? 'ไม่เคยปิดเลย' : 'พบบางช่วงปิด/หรี่', 'accent-amber'],
@@ -1077,6 +1107,34 @@
       c.innerHTML = `<div class="k">${k}</div><div class="v">${v}</div>`;
       cardsEl.appendChild(c);
     });
+    // ---- summary of Fan ON / OFF hours ----
+    const valid = rows.filter(r => r.pmin != null);
+    const isOff = r => r.fanStatus.startsWith('ปิด');
+    const sumBy = (arr, f) => arr.reduce((s,r)=>s+f(r),0);
+    const offEv = valid.filter(isOff), onEv = valid.filter(r=>!isOff(r));
+    const dtTotalMin = sumBy(valid, r=>r.minutes);
+    const pct = (v,t) => t ? (v/t*100).toFixed(1)+'%' : '-';
+    const hrs = m => (m/60).toFixed(2);
+    // whole month, per meter reading: P >= threshold = Fan on, below = off
+    let monthOnH = 0, monthOffH = 0;
+    for (let i=0;i<meterRows.length-1;i++){
+      let dt = (meterRows[i+1].ts - meterRows[i].ts)/3600000;
+      if (dt > 5/60) dt = 5/60;
+      if (meterRows[i].pTotal >= state.cfg.fanOff) monthOnH += dt; else monthOffH += dt;
+    }
+    const monthTotalH = monthOnH + monthOffH;
+    const hoursRows = [
+      { period:'ระหว่างเครื่องหยุด', status:'Fan เปิด (ไม่ปิด)', n:onEv.length, h:hrs(sumBy(onEv,r=>r.minutes)), p:pct(sumBy(onEv,r=>r.minutes),dtTotalMin), kwh:sumBy(onEv,r=>r.kwh).toFixed(1), cost:Math.round(sumBy(onEv,r=>r.cost)).toLocaleString() },
+      { period:'ระหว่างเครื่องหยุด', status:'Fan ปิด', n:offEv.length, h:hrs(sumBy(offEv,r=>r.minutes)), p:pct(sumBy(offEv,r=>r.minutes),dtTotalMin), kwh:sumBy(offEv,r=>r.kwh).toFixed(1), cost:Math.round(sumBy(offEv,r=>r.cost)).toLocaleString() },
+      { period:'ระหว่างเครื่องหยุด', status:'รวม', n:valid.length, h:hrs(dtTotalMin), p:'100%', kwh:sumBy(valid,r=>r.kwh).toFixed(1), cost:Math.round(sumBy(valid,r=>r.cost)).toLocaleString(), total:true },
+      { period:'ทั้งช่วงมิเตอร์', status:'Fan เปิด (P ≥ '+state.cfg.fanOff+' kW)', n:'-', h:monthOnH.toFixed(2), p:pct(monthOnH,monthTotalH), kwh:'-', cost:'-' },
+      { period:'ทั้งช่วงมิเตอร์', status:'Fan ปิด (P < '+state.cfg.fanOff+' kW)', n:'-', h:monthOffH.toFixed(2), p:pct(monthOffH,monthTotalH), kwh:'-', cost:'-' },
+      { period:'ทั้งช่วงมิเตอร์', status:'รวม', n:'-', h:monthTotalH.toFixed(2), p:'100%', kwh:'-', cost:'-', total:true },
+    ];
+    $('#table-fan-hours tbody').innerHTML = hoursRows.map(r =>
+      `<tr${r.total?' style="background:var(--panel-2)"':''}><td>${r.period}</td><td>${r.status}</td><td class="num">${r.n}</td><td class="num">${r.h}</td><td class="num">${r.p}</td><td class="num">${r.kwh}</td><td class="num">${r.cost}</td></tr>`).join('');
+    $('#fan-hours-hint').textContent = 'เปิด/ปิดตัดสินที่ P ต่ำสุด < ' + state.cfg.fanOff + ' kW (รายเหตุการณ์) และ P รายค่าอ่าน (ทั้งช่วงมิเตอร์)';
+    state._hoursRows = hoursRows;
     $('#btn-export-csv-fan').disabled = rows.length === 0;
     state._fanRows = rows;
   }
